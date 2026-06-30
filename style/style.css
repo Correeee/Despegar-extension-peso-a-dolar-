@@ -35,3 +35,9 @@
     justify-content: end;
     align-items: center;
 }
+
+.usd-color {
+  color: #28a745; /* Verde dólar */
+  font-weight: 500;
+}
+

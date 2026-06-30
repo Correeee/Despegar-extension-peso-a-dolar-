@@ -1,280 +1,220 @@
-let dolarBlueVenta = 0
-const pesosArray = document.getElementsByClassName('main-value')
+// =====================================================================
+// Estado local (evita llamar a chrome.storage en cada mousemove)
+// =====================================================================
+let activo     = false;
+let tipoDolar  = 'oficial';
+let dolarData  = null;
+let tooltip    = null;
 
+// RAF throttle
+let rafPending = false;
+let lastEvent  = null;
 
-if (pesosArray.length == 0 || pesosArray.length == 1) {
+const PRICE_SELECTORS = [
+    '.main-value', '.amount', '.price-amount', '.price-number',
+    '.item-price', '.offer-card-pricebox-price-amount',
+    '.-eva-3-ml-xsm', '.wizard-price-amount', '.-eva-3-bold',
+    '.pricebox-big-text', '.eva-3-h4', '.pricebox-sticky-price'
+].join(', ');
 
-    const interval = setInterval(() => {
+const BADGE_CLASS = 'despegar-usd-badge';
 
-        if (pesosArray.length > 1) {
-            clearInterval(interval)
-
-            fetch('https://api.bluelytics.com.ar/v2/latest')
-                .then(response => response.json())
-                .then(data => {
-                    dolarBlueVenta = data.blue.value_avg
-                })
-                .then(() => {
-
-                    for (let i = 0; i < pesosArray.length; i++) {
-                        const pesos = pesosArray[i];
-
-                        const pesosText = pesos.textContent
-                        const pesosFormatted = pesosText.split('.').join('')
-                        const pesosConversion = (pesosFormatted / dolarBlueVenta).toFixed(2)
-
-                        const dolarChild = document.createElement('span')
-                        const div = document.createElement('div')
-                        div.classList.add('div__priceConvertedDiv')
-                        dolarChild.classList.add('priceConverted')
-                        dolarChild.innerText = pesosConversion + ' USD'
-                        const divNode = pesos.parentNode.appendChild(div)
-                        divNode.parentNode.appendChild(dolarChild)
-                        div.appendChild(dolarChild)
-
-                    }
-                })
-                .catch(error => console.log(error))
-
-        }
-    }, 1000);
-
+// =====================================================================
+// Helpers
+// =====================================================================
+function getCotizacion() {
+    if (!dolarData) return null;
+    const src = tipoDolar === 'blue' ? dolarData.blue : dolarData.oficial;
+    return src ? src.value_sell : null;
 }
 
-const pesosVuelosArray = document.getElementsByClassName('amount price-amount')
-
-if (pesosVuelosArray.length == 0) {
-
-    const interval = setInterval(() => {
-        if (pesosVuelosArray.length !== 0) {
-            clearInterval(interval)
-
-            fetch('https://api.bluelytics.com.ar/v2/latest')
-                .then(response => response.json())
-                .then(data => {
-                    dolarBlueVenta = data.blue.value_avg
-                })
-                .then(() => {
-
-                    for (let i = 0; i < pesosVuelosArray.length; i++) {
-                        const pesos = pesosVuelosArray[i];
-                        const pesosText = pesos.textContent
-                        const pesosFormatted = pesosText.split('.').join('')
-                        const pesosConversion = (pesosFormatted / dolarBlueVenta).toFixed(2)
-
-                        const dolarChild = document.createElement('span')
-                        const div = document.createElement('div')
-                        div.classList.add('div__priceConvertedDiv')
-                        dolarChild.classList.add('priceConverted')
-                        dolarChild.innerText = pesosConversion + ' USD'
-                        const divNode = pesos.parentNode.appendChild(div)
-                        divNode.parentNode.appendChild(dolarChild)
-                        div.appendChild(dolarChild)
-
-                    }
-                })
-                .catch(error => console.log(error))
-
-        }
-    }, 1000);
-
+function parsearPesos(texto) {
+    const v = parseFloat(texto.replace(/[^\d]/g, ''));
+    return (!isNaN(v) && v > 500) ? v : null;
 }
 
-const pesosPacksArray = document.getElementsByClassName('pricebox-big-text')
-
-if (pesosPacksArray.length == 0 || pesosPacksArray.length == 1) {
-
-    const interval = setInterval(() => {
-        if (pesosPacksArray.length > 1) {
-            clearInterval(interval)
-
-            fetch('https://api.bluelytics.com.ar/v2/latest')
-                .then(response => response.json())
-                .then(data => {
-                    dolarBlueVenta = data.blue.value_avg
-                })
-                .then(() => {
-
-                    for (let i = 0; i < pesosPacksArray.length; i++) {
-                        const pesos = pesosPacksArray[i];
-                        const pesosText = pesos.textContent
-                        const pesosFormatted = pesosText.split('.').join('')
-                        const pesosConversion = (pesosFormatted / dolarBlueVenta).toFixed(2)
-
-                        const dolarChild = document.createElement('span')
-                        const div = document.createElement('div')
-                        div.classList.add('div__priceConvertedDiv')
-                        dolarChild.classList.add('priceConverted')
-                        dolarChild.innerText = pesosConversion + ' USD'
-                        const divNode = pesos.parentNode.appendChild(div)
-                        divNode.parentNode.appendChild(dolarChild)
-                        div.appendChild(dolarChild)
-
-                    }
-                })
-                .catch(error => console.log(error))
-
-        }
-    }, 1000);
-
+function formatUSD(valor) {
+    return valor.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const pesosOfferArray = document.getElementsByClassName('offer-card-pricebox-price-amount')
+// =====================================================================
+// Carga inicial desde storage
+// =====================================================================
+chrome.storage.local.get(['activo', 'dolarData', 'tipoDolar'], (stored) => {
+    activo    = stored.activo    ?? false;
+    tipoDolar = stored.tipoDolar || 'oficial';
+    dolarData = stored.dolarData || null;
 
-if (pesosOfferArray.length != 0) {
+    crearTooltip();
+    if (activo && getCotizacion()) {
+        inyectarBadges();
+        observarDOM();
+    }
+});
 
-    const interval = setInterval(() => {
+// =====================================================================
+// Sincronización con cambios de storage (sin reload de página)
+// =====================================================================
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
 
-        if (pesosOfferArray.length > 0) {
-            clearInterval(interval)
-
-            fetch('https://api.bluelytics.com.ar/v2/latest')
-                .then(response => response.json())
-                .then(data => {
-                    dolarBlueVenta = data.blue.value_avg
-                })
-                .then(() => {
-
-                    for (let i = 0; i < pesosOfferArray.length; i++) {
-                        const pesos = pesosOfferArray[i];
-                        const pesosText = pesos.textContent
-                        const pesosFormatted = pesosText.split('.').join('')
-                        const pesosConversion = (pesosFormatted / dolarBlueVenta).toFixed(2)
-
-                        const dolarChild = document.createElement('span')
-                        const div = document.createElement('div')
-                        div.classList.add('div__priceConvertedDivOffer')
-                        dolarChild.classList.add('priceConverted')
-                        dolarChild.innerText = pesosConversion + ' USD'
-                        const divNode = pesos.parentNode.appendChild(div)
-                        divNode.parentNode.appendChild(dolarChild)
-                        div.appendChild(dolarChild)
-
-                    }
-                })
-                .catch(error => console.log(error))
-
+    if (changes.activo !== undefined) {
+        activo = changes.activo.newValue;
+        if (!activo) {
+            if (tooltip) tooltip.style.display = 'none';
+            eliminarBadges();
+        } else if (getCotizacion()) {
+            inyectarBadges();
+            observarDOM();
         }
-    }, 1000);
+    }
 
+    if (changes.dolarData !== undefined) {
+        dolarData = changes.dolarData.newValue;
+        if (activo && getCotizacion()) { inyectarBadges(); observarDOM(); }
+    }
+
+    if (changes.tipoDolar !== undefined) {
+        tipoDolar = changes.tipoDolar.newValue;
+        eliminarBadges();
+        if (activo && getCotizacion()) inyectarBadges();
+    }
+});
+
+// =====================================================================
+// Tooltip flotante
+// =====================================================================
+function crearTooltip() {
+    const existing = document.getElementById('despegar-usd-tooltip');
+    if (existing) { tooltip = existing; return; }
+
+    tooltip = document.createElement('div');
+    tooltip.id = 'despegar-usd-tooltip';
+    tooltip.style.cssText = `
+        position: fixed;
+        padding: 10px 14px;
+        background: rgba(255,255,255,0.98);
+        color: #333;
+        border-radius: 8px;
+        font-size: 14px;
+        z-index: 2147483647;
+        display: none;
+        pointer-events: none;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        border: 1.5px solid #4300d2;
+        font-family: sans-serif;
+        line-height: 1.3;
+        font-weight: bold;
+    `;
+    document.body.appendChild(tooltip);
 }
 
-const pesosEscapadasArray = document.getElementsByClassName('price-number')
+// =====================================================================
+// mousemove con throttle via requestAnimationFrame
+// =====================================================================
+document.addEventListener('mousemove', (e) => {
+    lastEvent = e;
+    if (!rafPending) {
+        rafPending = true;
+        requestAnimationFrame(procesarMouse);
+    }
+});
 
-if (pesosEscapadasArray.length == 0) {
+function procesarMouse() {
+    rafPending = false;
+    const e = lastEvent;
+    if (!e) return;
 
-    const interval = setInterval(() => {
-
-        if (pesosEscapadasArray.length > 0) {
-            clearInterval(interval)
-
-            fetch('https://api.bluelytics.com.ar/v2/latest')
-                .then(response => response.json())
-                .then(data => {
-                    dolarBlueVenta = data.blue.value_avg
-                })
-                .then(() => {
-
-                    for (let i = 0; i < pesosEscapadasArray.length; i++) {
-                        const pesos = pesosEscapadasArray[i];
-                        const pesosText = pesos.textContent
-                        const pesosFormatted = pesosText.split('.').join('')
-                        const pesosConversion = (pesosFormatted / dolarBlueVenta).toFixed(2)
-
-                        const dolarChild = document.createElement('span')
-                        const div = document.createElement('div')
-                        div.classList.add('div__priceConvertedDiv')
-                        dolarChild.classList.add('priceConverted')
-                        dolarChild.innerText = pesosConversion + ' USD'
-                        const divNode = pesos.parentNode.appendChild(div)
-                        divNode.parentNode.appendChild(dolarChild)
-                        div.appendChild(dolarChild)
-
-                    }
-                })
-                .catch(error => console.log(error))
-
+    try {
+        if (!activo || !getCotizacion() || !tooltip) {
+            if (tooltip) tooltip.style.display = 'none';
+            return;
         }
-    }, 1000);
 
+        const target = e.target.closest(PRICE_SELECTORS);
+        if (target) {
+            const pesos = parsearPesos(target.innerText);
+            if (pesos) {
+                const cotiz = getCotizacion();
+                const usd   = formatUSD(pesos / cotiz);
+                const label = tipoDolar === 'blue' ? 'Blue' : 'Oficial';
+
+                tooltip.innerHTML = `
+                    <div style="color:#4300d2;font-size:10px;text-transform:uppercase;margin-bottom:2px;">
+                        Despegar · Dólar ${label}
+                    </div>
+                    <div style="font-size:18px;color:#111;">U$D ${usd}</div>
+                    <div style="color:#888;font-size:9px;font-weight:normal;margin-top:4px;">
+                        Cotización venta: $${cotiz}
+                    </div>`;
+
+                tooltip.style.display = 'block';
+                tooltip.style.left    = (e.clientX + 15) + 'px';
+                tooltip.style.top     = (e.clientY + 15) + 'px';
+
+                // Ajustar si se sale de pantalla
+                const b = tooltip.getBoundingClientRect();
+                if (e.clientX + b.width + 20 > window.innerWidth) {
+                    tooltip.style.left = (e.clientX - b.width - 15) + 'px';
+                }
+                if (e.clientY + b.height + 20 > window.innerHeight) {
+                    tooltip.style.top = (e.clientY - b.height - 15) + 'px';
+                }
+                return;
+            }
+        }
+        tooltip.style.display = 'none';
+    } catch (_) {
+        if (tooltip) tooltip.style.display = 'none';
+    }
 }
 
-const pesosCarsArray = document.getElementsByClassName('price-info-total-value')
+// =====================================================================
+// Badges permanentes en cards de precio
+// =====================================================================
+function inyectarBadges() {
+    const cotiz = getCotizacion();
+    if (!cotiz) return;
 
-if (pesosCarsArray.length == 0) {
+    document.querySelectorAll(PRICE_SELECTORS).forEach(el => {
+        // Evitar duplicados y elementos que ya tienen badge hijo
+        if (el.querySelector(`.${BADGE_CLASS}`)) return;
+        // Evitar inyectar dentro de otro badge
+        if (el.classList.contains(BADGE_CLASS)) return;
 
-    const interval = setInterval(() => {
+        const pesos = parsearPesos(el.innerText);
+        if (!pesos) return;
 
-        if (pesosCarsArray.length > 0) {
-            clearInterval(interval)
-
-            fetch('https://api.bluelytics.com.ar/v2/latest')
-                .then(response => response.json())
-                .then(data => {
-                    dolarBlueVenta = data.blue.value_avg
-                })
-                .then(() => {
-
-                    for (let i = 0; i < pesosCarsArray.length; i++) {
-                        const pesos = pesosCarsArray[i];
-                        const pesosText = pesos.textContent
-                        const pesosFormatted = pesosText.split('.').join('')
-                        const pesosConversion = (pesosFormatted / dolarBlueVenta).toFixed(2)
-
-                        const dolarChild = document.createElement('span')
-                        const div = document.createElement('div')
-                        div.classList.add('div__priceConvertedDiv')
-                        dolarChild.classList.add('priceConverted')
-                        dolarChild.innerText = pesosConversion + ' USD'
-                        const divNode = pesos.parentNode.appendChild(div)
-                        divNode.parentNode.appendChild(dolarChild)
-                        div.appendChild(dolarChild)
-
-                    }
-                })
-                .catch(error => console.log(error))
-
-        }
-    }, 1000);
-
+        const badge = document.createElement('span');
+        badge.className  = BADGE_CLASS;
+        badge.textContent = `≈ U$D ${formatUSD(pesos / cotiz)}`;
+        badge.style.cssText = `
+            display: block;
+            font-size: 11px;
+            color: #28a745;
+            font-weight: 600;
+            font-family: sans-serif;
+            margin-top: 2px;
+            letter-spacing: 0.2px;
+            line-height: 1.2;
+        `;
+        el.appendChild(badge);
+    });
 }
 
+function eliminarBadges() {
+    document.querySelectorAll(`.${BADGE_CLASS}`).forEach(el => el.remove());
+}
 
-const pesosFinalArray = document.getElementsByClassName('amount')
-const finalPrice = pesosFinalArray[pesosFinalArray.length - 1]
+// =====================================================================
+// MutationObserver para contenido dinámico (scroll / SPA navigation)
+// =====================================================================
+let observer = null;
 
-if (pesosFinalArray.length != 0) {
-
-    const interval = setInterval(() => {
-
-        if (pesosFinalArray.length > 0) {
-            clearInterval(interval)
-            console.log(pesosFinalArray)
-            fetch('https://api.bluelytics.com.ar/v2/latest')
-                .then(response => response.json())
-                .then(data => {
-                    dolarBlueVenta = data.blue.value_avg
-                })
-                .then(() => {
-
-                    const pesos = finalPrice;
-                    const pesosText = pesos.textContent
-                    const pesosFormatted = pesosText.split('.').join('')
-                    const pesosConversion = (pesosFormatted / dolarBlueVenta).toFixed(2)
-
-                    const dolarChild = document.createElement('span')
-                    const div = document.createElement('div')
-                    div.classList.add('div__priceConvertedDivFinalPrice')
-                    dolarChild.classList.add('priceConverted')
-                    dolarChild.innerText = pesosConversion + ' USD'
-                    const divNode = pesos.parentNode.appendChild(div)
-                    divNode.parentNode.appendChild(dolarChild)
-                    div.appendChild(dolarChild)
-
-                })
-                .catch(error => console.log(error))
-
-        }
-    }, 1000);
-
+function observarDOM() {
+    if (observer) return;
+    observer = new MutationObserver(() => {
+        if (activo && getCotizacion()) inyectarBadges();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
 }

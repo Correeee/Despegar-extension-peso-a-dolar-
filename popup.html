@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <title>Despegar USD</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Rubik", sans-serif; }
+
+    body {
+      width: 300px;
+      background: #F2F4F5;
+      color: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: #4300D2;
+      padding: 14px 16px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-title { color: white; font-size: 13px; font-weight: 500; opacity: 0.9; }
+    .header img { height: 22px; object-fit: contain; filter: brightness(0) invert(1); opacity: 0.9; }
+
+    .tipo-selector {
+      display: flex;
+      margin: 12px 12px 0;
+      background: white;
+      border-radius: 10px;
+      padding: 3px;
+      gap: 3px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .dolar-tipo-btn {
+      flex: 1;
+      padding: 7px 0;
+      border: none;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      background: transparent;
+      color: #888;
+      transition: all 0.2s;
+    }
+    .dolar-tipo-btn.activo {
+      background: #4300D2;
+      color: white;
+      box-shadow: 0 2px 8px rgba(67,0,210,0.3);
+    }
+
+    .valores-card {
+      background: white;
+      border-radius: 12px;
+      margin: 10px 12px 0;
+      padding: 14px 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .fecha-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .fecha-label { font-size: 11px; color: #999; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+    #fecha { font-size: 12px; color: #555; font-weight: 500; }
+
+    .valor-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+    }
+    .valor-label { font-size: 13px; color: #666; font-weight: 400; }
+    .valor-numero { font-size: 16px; font-weight: 600; color: #28a745; }
+    .valor-ars { font-size: 11px; font-weight: 400; color: #aaa; margin-right: 3px; }
+
+    .ultima-actualizacion { font-size: 10px; color: #bbb; margin-top: 10px; text-align: right; }
+
+    .toggle-section { padding: 10px 12px; }
+    #toggle {
+      width: 100%;
+      padding: 11px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      background-color: #4300D2;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      transition: all 0.25s;
+      letter-spacing: 0.3px;
+      box-shadow: 0 3px 10px rgba(67,0,210,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    #toggle .led {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(255,255,255,0.5);
+      transition: all 0.25s;
+    }
+    #toggle.activo { background-color: #28a745; box-shadow: 0 3px 10px rgba(40,167,69,0.3); }
+    #toggle.activo .led { background: white; box-shadow: 0 0 6px rgba(255,255,255,0.8); }
+    #toggle:hover { filter: brightness(0.9); }
+
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: #999;
+      padding: 10px;
+      border-top: 1px solid #e0e0e0;
+      background: white;
+    }
+    .footer a { color: #4300D2; text-decoration: none; font-weight: 500; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <span class="header-title">Precio en dólares</span>
+    <img src="images/Despegar.png" alt="Logo Despegar">
+  </div>
+
+  <div class="tipo-selector">
+    <button class="dolar-tipo-btn activo" data-tipo="oficial">Oficial</button>
+    <button class="dolar-tipo-btn" data-tipo="blue">Blue</button>
+  </div>
+
+  <div class="valores-card">
+    <div class="fecha-row">
+      <span class="fecha-label">Cotización</span>
+      <span id="fecha">--/--/--</span>
+    </div>
+    <div class="valor-row">
+      <span class="valor-label">Venta</span>
+      <span class="valor-numero"><span class="valor-ars">ARS</span><span id="valorVenta">-</span></span>
+    </div>
+    <div class="valor-row">
+      <span class="valor-label">Compra</span>
+      <span class="valor-numero"><span class="valor-ars">ARS</span><span id="valorCompra">-</span></span>
+    </div>
+    <div class="ultima-actualizacion" id="ultimaActualizacion"></div>
+  </div>
+
+  <div class="toggle-section">
+    <button id="toggle">
+      <span class="led"></span>
+      <span id="toggle-texto">Encender</span>
+    </button>
+  </div>
+
+  <div class="footer">
+    Creado por <a href="https://www.desarrollados.com.ar" target="_blank">Desarrollados</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>
