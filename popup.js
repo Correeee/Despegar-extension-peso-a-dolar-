@@ -41,6 +41,51 @@ function mostrarValores(data, tipo) {
     document.getElementById('valorCompra').textContent = src.value_buy.toFixed(2);
 }
 
+// ── Variación del día ─────────────────────────────────────────────
+function diaAnteriorStr() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0]; // YYYY-MM-DD
+}
+
+function mostrarIndicador(elId, hoy, ayer) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    if (!hoy || !ayer || ayer === 0) { el.textContent = ''; el.className = 'variacion'; return; }
+    const diff = hoy - ayer;
+    const pct  = Math.abs((diff / ayer) * 100).toFixed(2);
+    el.textContent = `${diff >= 0 ? '↑' : '↓'} ${diff >= 0 ? '+' : '-'}${pct}%`;
+    el.className   = `variacion ${diff > 0 ? 'sube' : diff < 0 ? 'baja' : 'igual'}`;
+}
+
+function cargarVariacion(hoyData, tipo) {
+    const fechaAyer = diaAnteriorStr();
+    const src = tipo === 'blue' ? 'blue' : 'oficial';
+
+    chrome.storage.local.get(['dolarAyerData', 'dolarAyerFecha'], (stored) => {
+        const usarCache = stored.dolarAyerFecha === fechaAyer && stored.dolarAyerData;
+        const aplicar = (ayer) => {
+            mostrarIndicador('varVenta',  hoyData[src]?.value_sell, ayer[src]?.value_sell);
+            mostrarIndicador('varCompra', hoyData[src]?.value_buy,  ayer[src]?.value_buy);
+        };
+
+        if (usarCache) { aplicar(stored.dolarAyerData); return; }
+
+        fetch(`https://api.bluelytics.com.ar/v2/historical?day=${fechaAyer}`)
+            .then(r => r.json())
+            .then(ayer => {
+                chrome.storage.local.set({ dolarAyerData: ayer, dolarAyerFecha: fechaAyer });
+                aplicar(ayer);
+            })
+            .catch(() => {
+                ['varVenta', 'varCompra'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) { el.textContent = ''; el.className = 'variacion'; }
+                });
+            });
+    });
+}
+
 // ── Fetch con caché TTL ──────────────────────────────────────────
 function cargarValores() {
     chrome.storage.local.get(['dolarData', 'dolarTimestamp', 'tipoDolar'], (stored) => {
@@ -52,6 +97,7 @@ function cargarValores() {
 
         if (vigente) {
             mostrarValores(stored.dolarData, tipo);
+            cargarVariacion(stored.dolarData, tipo);
             actualizarFecha(stored.dolarTimestamp);
             actualizarTiempoActualizacion(stored.dolarTimestamp);
             return;
@@ -62,6 +108,7 @@ function cargarValores() {
             .then(data => {
                 chrome.storage.local.set({ dolarData: data, dolarTimestamp: ahora });
                 mostrarValores(data, tipo);
+                cargarVariacion(data, tipo);
                 actualizarFecha(ahora);
                 actualizarTiempoActualizacion(ahora);
             })
@@ -80,7 +127,10 @@ document.querySelectorAll('.dolar-tipo-btn').forEach(btn => {
         btn.classList.add('activo');
         chrome.storage.local.set({ tipoDolar: tipo });
         chrome.storage.local.get('dolarData', (d) => {
-            if (d.dolarData) mostrarValores(d.dolarData, tipo);
+            if (d.dolarData) {
+                mostrarValores(d.dolarData, tipo);
+                cargarVariacion(d.dolarData, tipo);
+            }
         });
     });
 });

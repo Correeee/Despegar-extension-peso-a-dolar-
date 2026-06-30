@@ -82,6 +82,12 @@
     .valor-numero { font-size: 16px; font-weight: 600; color: #28a745; }
     .valor-ars { font-size: 11px; font-weight: 400; color: #aaa; margin-right: 3px; }
 
+    .valor-derecha { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+    .variacion { font-size: 10px; font-weight: 600; letter-spacing: 0.2px; min-height: 13px; }
+    .variacion.sube { color: #e74c3c; }
+    .variacion.baja { color: #28a745; }
+    .variacion.igual { color: #aaa; }
+
     .ultima-actualizacion { font-size: 10px; color: #bbb; margin-top: 10px; text-align: right; }
 
     .toggle-section { padding: 10px 12px; }
@@ -143,11 +149,17 @@
     </div>
     <div class="valor-row">
       <span class="valor-label">Venta</span>
-      <span class="valor-numero"><span class="valor-ars">ARS</span><span id="valorVenta">-</span></span>
+      <div class="valor-derecha">
+        <span class="valor-numero"><span class="valor-ars">ARS</span><span id="valorVenta">-</span></span>
+        <span class="variacion" id="varVenta"></span>
+      </div>
     </div>
     <div class="valor-row">
       <span class="valor-label">Compra</span>
-      <span class="valor-numero"><span class="valor-ars">ARS</span><span id="valorCompra">-</span></span>
+      <div class="valor-derecha">
+        <span class="valor-numero"><span class="valor-ars">ARS</span><span id="valorCompra">-</span></span>
+        <span class="variacion" id="varCompra"></span>
+      </div>
     </div>
     <div class="ultima-actualizacion" id="ultimaActualizacion"></div>
   </div>
