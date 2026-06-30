@@ -54,7 +54,7 @@ function mostrarIndicador(elId, hoy, ayer) {
     if (!hoy || !ayer || ayer === 0) { el.textContent = ''; el.className = 'variacion'; return; }
     const diff = hoy - ayer;
     const pct  = Math.abs((diff / ayer) * 100).toFixed(2);
-    el.textContent = `${diff >= 0 ? '↑' : '↓'} ${diff >= 0 ? '+' : '-'}${pct}%`;
+    el.textContent = `${diff >= 0 ? '\u2191' : '\u2193'} ${diff >= 0 ? '+' : '-'}${pct}%`;
     el.className   = `variacion ${diff > 0 ? 'sube' : diff < 0 ? 'baja' : 'igual'}`;
 }
 
