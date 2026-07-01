@@ -88,6 +88,10 @@ function inyectarBadges() {
         // Evitar inyectar dentro de otro badge
         if (el.classList.contains(BADGE_CLASS)) return;
 
+        // Evitar inyectar si el precio ya está en USD
+        const textoMoneda = el.parentElement ? el.parentElement.innerText : el.innerText;
+        if (/US\$|USD|U\$D|U\$S/i.test(textoMoneda)) return;
+
         const pesos = parsearPesos(el.innerText);
         if (!pesos) return;
 
