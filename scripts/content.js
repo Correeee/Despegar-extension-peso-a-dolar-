@@ -1,14 +1,9 @@
 // =====================================================================
-// Estado local (evita llamar a chrome.storage en cada mousemove)
+// Estado local
 // =====================================================================
 let activo     = false;
 let tipoDolar  = 'oficial';
 let dolarData  = null;
-let tooltip    = null;
-
-// RAF throttle
-let rafPending = false;
-let lastEvent  = null;
 
 const PRICE_SELECTORS = [
     '.main-value', '.amount', '.price-amount', '.price-number',
@@ -45,7 +40,6 @@ chrome.storage.local.get(['activo', 'dolarData', 'tipoDolar'], (stored) => {
     tipoDolar = stored.tipoDolar || 'oficial';
     dolarData = stored.dolarData || null;
 
-    crearTooltip();
     if (activo && getCotizacion()) {
         inyectarBadges();
         observarDOM();
@@ -61,7 +55,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (changes.activo !== undefined) {
         activo = changes.activo.newValue;
         if (!activo) {
-            if (tooltip) tooltip.style.display = 'none';
             eliminarBadges();
         } else if (getCotizacion()) {
             inyectarBadges();
@@ -80,94 +73,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
         if (activo && getCotizacion()) inyectarBadges();
     }
 });
-
-// =====================================================================
-// Tooltip flotante
-// =====================================================================
-function crearTooltip() {
-    const existing = document.getElementById('despegar-usd-tooltip');
-    if (existing) { tooltip = existing; return; }
-
-    tooltip = document.createElement('div');
-    tooltip.id = 'despegar-usd-tooltip';
-    tooltip.style.cssText = `
-        position: fixed;
-        padding: 10px 14px;
-        background: rgba(255,255,255,0.98);
-        color: #333;
-        border-radius: 8px;
-        font-size: 14px;
-        z-index: 2147483647;
-        display: none;
-        pointer-events: none;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        border: 1.5px solid #4300d2;
-        font-family: sans-serif;
-        line-height: 1.3;
-        font-weight: bold;
-    `;
-    document.body.appendChild(tooltip);
-}
-
-// =====================================================================
-// mousemove con throttle via requestAnimationFrame
-// =====================================================================
-document.addEventListener('mousemove', (e) => {
-    lastEvent = e;
-    if (!rafPending) {
-        rafPending = true;
-        requestAnimationFrame(procesarMouse);
-    }
-});
-
-function procesarMouse() {
-    rafPending = false;
-    const e = lastEvent;
-    if (!e) return;
-
-    try {
-        if (!activo || !getCotizacion() || !tooltip) {
-            if (tooltip) tooltip.style.display = 'none';
-            return;
-        }
-
-        const target = e.target.closest(PRICE_SELECTORS);
-        if (target) {
-            const pesos = parsearPesos(target.innerText);
-            if (pesos) {
-                const cotiz = getCotizacion();
-                const usd   = formatUSD(pesos / cotiz);
-                const label = tipoDolar === 'blue' ? 'Blue' : 'Oficial';
-
-                tooltip.innerHTML = `
-                    <div style="color:#4300d2;font-size:10px;text-transform:uppercase;margin-bottom:2px;">
-                        Despegar · Dólar ${label}
-                    </div>
-                    <div style="font-size:18px;color:#111;">U$D ${usd}</div>
-                    <div style="color:#888;font-size:9px;font-weight:normal;margin-top:4px;">
-                        Cotización venta: $${cotiz}
-                    </div>`;
-
-                tooltip.style.display = 'block';
-                tooltip.style.left    = (e.clientX + 15) + 'px';
-                tooltip.style.top     = (e.clientY + 15) + 'px';
-
-                // Ajustar si se sale de pantalla
-                const b = tooltip.getBoundingClientRect();
-                if (e.clientX + b.width + 20 > window.innerWidth) {
-                    tooltip.style.left = (e.clientX - b.width - 15) + 'px';
-                }
-                if (e.clientY + b.height + 20 > window.innerHeight) {
-                    tooltip.style.top = (e.clientY - b.height - 15) + 'px';
-                }
-                return;
-            }
-        }
-        tooltip.style.display = 'none';
-    } catch (_) {
-        if (tooltip) tooltip.style.display = 'none';
-    }
-}
 
 // =====================================================================
 // Badges permanentes en cards de precio
