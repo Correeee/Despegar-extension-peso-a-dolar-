@@ -9,7 +9,8 @@ const PRICE_SELECTORS = [
     '.main-value', '.amount', '.price-amount', '.price-number',
     '.item-price', '.offer-card-pricebox-price-amount',
     '.-eva-3-ml-xsm', '.wizard-price-amount', '.-eva-3-bold',
-    '.pricebox-big-text', '.eva-3-h4', '.pricebox-sticky-price'
+    '.pricebox-big-text', '.eva-3-h4', '.pricebox-sticky-price',
+    '.favorite-card-pricebox-price-amount'
 ].join(', ');
 
 const BADGE_CLASS = 'despegar-usd-badge';
