@@ -1,0 +1,10 @@
+# Artefactos de build
+dist/
+*.zip
+
+# Dependencias
+node_modules/
+
+# Sistema
+.DS_Store
+Thumbs.db

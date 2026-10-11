@@ -1,6 +1,11 @@
 const toggleButton = document.getElementById('toggle');
-const toggleTexto  = document.getElementById('toggle-texto');
-const CACHE_TTL    = 15 * 60 * 1000; // 15 minutos
+const toggleTexto = document.getElementById('toggle-texto');
+const btnRefrescar = document.getElementById('btnRefrescar');
+const avisoEl = document.getElementById('aviso');
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutos
+
+let tipoActual = 'oficial';           // preferencia activa (Oficial / Blue)
+let decimales = 2;                    // preferencia de formato
 
 // ── Badge del ícono ──────────────────────────────────────────────
 function actualizarBadge(activo) {
@@ -14,63 +19,72 @@ function actualizarBoton(activo) {
     toggleButton.classList.toggle('activo', activo);
 }
 
+// ── Aviso (estado offline / datos viejos) ────────────────────────
+function mostrarAviso(texto) {
+    if (!avisoEl) return;
+    avisoEl.textContent = texto;
+    avisoEl.hidden = false;
+}
+
+function ocultarAviso() {
+    if (!avisoEl) return;
+    avisoEl.hidden = true;
+    avisoEl.textContent = '';
+}
+
 // ── Fecha y "hace X min" ─────────────────────────────────────────
 function actualizarFecha(ts) {
-    const d   = ts ? new Date(ts) : new Date();
+    const d = ts ? new Date(ts) : new Date();
     const dia = String(d.getDate()).padStart(2, '0');
     const mes = String(d.getMonth() + 1).padStart(2, '0');
-    const yr  = String(d.getFullYear()).slice(-2);
+    const yr = String(d.getFullYear()).slice(-2);
     document.getElementById('fecha').textContent = `${dia}/${mes}/${yr}`;
 }
 
-function actualizarTiempoActualizacion(ts) {
-    const el   = document.getElementById('ultimaActualizacion');
+function actualizarTiempoActualizacion(ts, fuente) {
+    const el = document.getElementById('ultimaActualizacion');
     if (!ts) { el.textContent = ''; return; }
     const mins = Math.floor((Date.now() - ts) / 60000);
-    if (mins < 1)      el.textContent = 'Actualizado hace un momento';
-    else if (mins < 2) el.textContent = 'Actualizado hace 1 min';
-    else               el.textContent = `Actualizado hace ${mins} min`;
+    const base = mins < 1 ? 'Actualizado hace un momento'
+        : mins < 2 ? 'Actualizado hace 1 min'
+            : `Actualizado hace ${mins} min`;
+    el.textContent = fuente ? `${base} · ${fuente}` : base;
 }
 
 // ── Mostrar valores ──────────────────────────────────────────────
 function mostrarValores(data, tipo) {
     if (!data) return;
     const src = tipo === 'blue' ? data.blue : data.oficial;
-    if (!src)  return;
-    document.getElementById('valorVenta').textContent  = src.value_sell.toFixed(2);
-    document.getElementById('valorCompra').textContent = src.value_buy.toFixed(2);
+    if (!src) return;
+    document.getElementById('valorVenta').textContent = formatearUSD(src.value_sell, decimales);
+    document.getElementById('valorCompra').textContent = formatearUSD(src.value_buy, decimales);
 }
 
 // ── Variación del día ─────────────────────────────────────────────
-function diaAnteriorStr() {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().split('T')[0]; // YYYY-MM-DD
-}
-
 function mostrarIndicador(elId, hoy, ayer) {
     const el = document.getElementById(elId);
     if (!el) return;
     if (!hoy || !ayer || ayer === 0) { el.textContent = ''; el.className = 'variacion'; return; }
     const diff = hoy - ayer;
-    const pct  = Math.abs((diff / ayer) * 100).toFixed(2);
+    const pct = Math.abs((diff / ayer) * 100).toFixed(2);
     el.textContent = `${diff >= 0 ? '\u2191' : '\u2193'} ${diff >= 0 ? '+' : '-'}${pct}%`;
-    el.className   = `variacion ${diff > 0 ? 'sube' : diff < 0 ? 'baja' : 'igual'}`;
+    el.className = `variacion ${diff > 0 ? 'sube' : diff < 0 ? 'baja' : 'igual'}`;
 }
 
 function cargarVariacion(hoyData, tipo) {
-    const fechaAyer = diaAnteriorStr();
+    const fechaAyer = fechaAyerISO();
     const src = tipo === 'blue' ? 'blue' : 'oficial';
 
     chrome.storage.local.get(['dolarAyerData', 'dolarAyerFecha'], (stored) => {
         const usarCache = stored.dolarAyerFecha === fechaAyer && stored.dolarAyerData;
         const aplicar = (ayer) => {
-            mostrarIndicador('varVenta',  hoyData[src]?.value_sell, ayer[src]?.value_sell);
-            mostrarIndicador('varCompra', hoyData[src]?.value_buy,  ayer[src]?.value_buy);
+            mostrarIndicador('varVenta', hoyData[src]?.value_sell, ayer[src]?.value_sell);
+            mostrarIndicador('varCompra', hoyData[src]?.value_buy, ayer[src]?.value_buy);
         };
 
         if (usarCache) { aplicar(stored.dolarAyerData); return; }
 
+        // Fallback: el background aún no trajo ayer, lo pedimos acá.
         fetch(`https://api.bluelytics.com.ar/v2/historical?day=${fechaAyer}`)
             .then(r => r.json())
             .then(ayer => {
@@ -86,50 +100,80 @@ function cargarVariacion(hoyData, tipo) {
     });
 }
 
-// ── Fetch con caché TTL ──────────────────────────────────────────
+// ── Lectura de datos locales (los escribe el service worker) ───────
 function cargarValores() {
-    chrome.storage.local.get(['dolarData', 'dolarTimestamp', 'tipoDolar'], (stored) => {
-        const tipo  = stored.tipoDolar || 'oficial';
-        const ahora = Date.now();
-        const vigente = stored.dolarData &&
-                        stored.dolarTimestamp &&
-                        (ahora - stored.dolarTimestamp) < CACHE_TTL;
+    chrome.storage.local.get(
+        ['dolarData', 'dolarTimestamp', 'dolarFuente', 'dolarError'],
+        (s) => {
+            const ahora = Date.now();
+            const antiguedad = s.dolarTimestamp ? ahora - s.dolarTimestamp : Infinity;
 
-        if (vigente) {
-            mostrarValores(stored.dolarData, tipo);
-            cargarVariacion(stored.dolarData, tipo);
-            actualizarFecha(stored.dolarTimestamp);
-            actualizarTiempoActualizacion(stored.dolarTimestamp);
+            if (s.dolarData) {
+                mostrarValores(s.dolarData, tipoActual);
+                cargarVariacion(s.dolarData, tipoActual);
+                actualizarFecha(s.dolarTimestamp);
+                actualizarTiempoActualizacion(s.dolarTimestamp, s.dolarFuente);
+
+                if (s.dolarError || antiguedad > CACHE_TTL * 2) {
+                    mostrarAviso(s.dolarError ||
+                        'Mostrando la última cotización guardada (datos desactualizados).');
+                } else {
+                    ocultarAviso();
+                }
+                return;
+            }
+
+            // Sin datos: pedimos al background que refresque.
+            document.getElementById('valorVenta').textContent = '-';
+            document.getElementById('valorCompra').textContent = '-';
+            pedirRefresco();
+        }
+    );
+}
+
+// ── Refresco manual / bajo demanda ───────────────────────────────
+function pedirRefresco() {
+    if (btnRefrescar) btnRefrescar.disabled = true;
+    chrome.runtime.sendMessage({ tipo: 'refrescarCotizacion' }, (resp) => {
+        if (btnRefrescar) btnRefrescar.disabled = false;
+        if (chrome.runtime.lastError || !resp) {
+            // El service worker no respondió: fallback directo.
+            fetchDirecto();
             return;
         }
-
-        fetch('https://api.bluelytics.com.ar/v2/latest')
-            .then(r => r.json())
-            .then(data => {
-                chrome.storage.local.set({ dolarData: data, dolarTimestamp: ahora });
-                mostrarValores(data, tipo);
-                cargarVariacion(data, tipo);
-                actualizarFecha(ahora);
-                actualizarTiempoActualizacion(ahora);
-            })
-            .catch(() => {
-                document.getElementById('valorVenta').textContent  = 'Error';
-                document.getElementById('valorCompra').textContent = 'Error';
-            });
+        cargarValores();
     });
+}
+
+function fetchDirecto() {
+    fetch('https://api.bluelytics.com.ar/v2/latest')
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(data => {
+            chrome.storage.local.set({
+                dolarData: data,
+                dolarTimestamp: Date.now(),
+                dolarFuente: 'bluelytics',
+                dolarError: null
+            }, cargarValores);
+        })
+        .catch(() => {
+            document.getElementById('valorVenta').textContent = 'Error';
+            document.getElementById('valorCompra').textContent = 'Error';
+            mostrarAviso('No se pudo obtener la cotización. Revisá tu conexión.');
+        });
 }
 
 // ── Selector Oficial / Blue ──────────────────────────────────────
 document.querySelectorAll('.dolar-tipo-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-        const tipo = btn.dataset.tipo;
+        tipoActual = btn.dataset.tipo;
         document.querySelectorAll('.dolar-tipo-btn').forEach(b => b.classList.remove('activo'));
         btn.classList.add('activo');
-        chrome.storage.local.set({ tipoDolar: tipo });
+        guardarPrefs({ tipoDolar: tipoActual });
         chrome.storage.local.get('dolarData', (d) => {
             if (d.dolarData) {
-                mostrarValores(d.dolarData, tipo);
-                cargarVariacion(d.dolarData, tipo);
+                mostrarValores(d.dolarData, tipoActual);
+                cargarVariacion(d.dolarData, tipoActual);
             }
         });
     });
@@ -137,27 +181,30 @@ document.querySelectorAll('.dolar-tipo-btn').forEach(btn => {
 
 // ── Toggle ON/OFF ────────────────────────────────────────────────
 toggleButton.addEventListener('click', () => {
-    chrome.storage.local.get('activo', (data) => {
-        const nuevo = !(data.activo ?? false);
-        chrome.storage.local.set({ activo: nuevo }, () => {
+    leerPrefs().then((prefs) => {
+        const nuevo = !prefs.activo;
+        guardarPrefs({ activo: nuevo }).then(() => {
             actualizarBoton(nuevo);
             actualizarBadge(nuevo);
         });
     });
 });
 
-// ── Estado inicial ───────────────────────────────────────────────
-chrome.storage.local.get(['activo', 'tipoDolar'], (data) => {
-    const activo = data.activo ?? false;
-    actualizarBoton(activo);
-    actualizarBadge(activo);
+// ── Refrescar manual ─────────────────────────────────────────────
+if (btnRefrescar) btnRefrescar.addEventListener('click', pedirRefresco);
 
-    const tipo = data.tipoDolar || 'oficial';
-    const btn  = document.querySelector(`.dolar-tipo-btn[data-tipo="${tipo}"]`);
+// ── Estado inicial ───────────────────────────────────────────────
+leerPrefs().then((prefs) => {
+    actualizarBoton(prefs.activo);
+    actualizarBadge(prefs.activo);
+
+    tipoActual = prefs.tipoDolar || 'oficial';
+    decimales = Number.isInteger(prefs.decimales) ? prefs.decimales : 2;
+
+    const btn = document.querySelector(`.dolar-tipo-btn[data-tipo="${tipoActual}"]`);
     if (btn) {
         document.querySelectorAll('.dolar-tipo-btn').forEach(b => b.classList.remove('activo'));
         btn.classList.add('activo');
     }
+    cargarValores();
 });
-
-cargarValores();

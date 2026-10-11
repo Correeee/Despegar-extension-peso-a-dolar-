@@ -91,6 +91,31 @@
 
     .ultima-actualizacion { font-size: 10px; color: #bbb; margin-top: 10px; text-align: right; }
 
+    .aviso {
+      margin: 10px 12px 0;
+      padding: 8px 10px;
+      background: #fff4e5;
+      color: #8a5a00;
+      border: 1px solid #ffd9a0;
+      border-radius: 8px;
+      font-size: 11px;
+      line-height: 1.3;
+    }
+    .fecha-right { display: flex; align-items: center; gap: 8px; }
+    .refrescar-btn {
+      border: none;
+      background: #f0f0f5;
+      color: #4300D2;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .refrescar-btn:hover { background: #e4e4ee; }
+    .refrescar-btn:disabled { opacity: 0.5; cursor: default; }
+
     .toggle-section { padding: 10px 12px; }
     #toggle {
       width: 100%;
@@ -138,6 +163,8 @@
     <img src="images/Despegar.png" alt="Logo Despegar">
   </div>
 
+  <div class="aviso" id="aviso" hidden></div>
+
   <div class="tipo-selector">
     <button class="dolar-tipo-btn activo" data-tipo="oficial">Oficial</button>
     <button class="dolar-tipo-btn" data-tipo="blue">Blue</button>
@@ -146,7 +173,10 @@
   <div class="valores-card">
     <div class="fecha-row">
       <span class="fecha-label">Cotización</span>
-      <span id="fecha">--/--/--</span>
+      <div class="fecha-right">
+        <span id="fecha">--/--/--</span>
+        <button class="refrescar-btn" id="btnRefrescar" title="Actualizar cotización">↻</button>
+      </div>
     </div>
     <div class="valor-row">
       <span class="valor-label">Venta</span>
@@ -176,6 +206,7 @@
     Creado por <a href="https://www.desarrollados.com.ar" target="_blank">Desarrollados</a>
   </div>
 
+  <script src="scripts/lib.js"></script>
   <script src="popup.js"></script>
 </body>
 

@@ -41,3 +41,15 @@
   font-weight: 500;
 }
 
+/* Badge de precio convertido inyectado por scripts/content.js */
+.despegar-usd-badge {
+  display: block;
+  font-size: 11px;
+  color: #28a745;
+  font-weight: 600;
+  font-family: sans-serif;
+  margin-top: 2px;
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+}
+

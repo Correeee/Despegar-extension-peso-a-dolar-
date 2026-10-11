@@ -1,9 +1,12 @@
 // =====================================================================
-// Estado local
+// content.js — Inyecta badges con el precio convertido a USD.
+// Depende de scripts/lib.js (cargado antes en el manifest).
 // =====================================================================
-let activo     = false;
-let tipoDolar  = 'oficial';
-let dolarData  = null;
+let activo = false;
+let tipoDolar = 'oficial';
+let umbralPesos = 500;
+let decimales = 2;
+let dolarData = null;
 
 const PRICE_SELECTORS = [
     '.main-value', '.amount', '.price-amount', '.price-number',
@@ -16,70 +19,68 @@ const PRICE_SELECTORS = [
 const BADGE_CLASS = 'despegar-usd-badge';
 
 // =====================================================================
-// Helpers
+// Carga inicial de preferencias y datos
 // =====================================================================
-function getCotizacion() {
-    if (!dolarData) return null;
-    const src = tipoDolar === 'blue' ? dolarData.blue : dolarData.oficial;
-    return src ? src.value_sell : null;
+function aplicarPrefs(prefs) {
+    if (!prefs) return;
+    activo = prefs.activo ?? false;
+    tipoDolar = prefs.tipoDolar || 'oficial';
+    umbralPesos = Number.isFinite(prefs.umbralPesos) ? prefs.umbralPesos : 500;
+    decimales = Number.isInteger(prefs.decimales) ? prefs.decimales : 2;
 }
 
-function parsearPesos(texto) {
-    const v = parseFloat(texto.replace(/[^\d]/g, ''));
-    return (!isNaN(v) && v > 500) ? v : null;
+function cargarDatosLocales() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get('dolarData', (stored) => {
+            dolarData = stored.dolarData || null;
+            resolve();
+        });
+    });
 }
 
-function formatUSD(valor) {
-    return valor.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-// =====================================================================
-// Carga inicial desde storage
-// =====================================================================
-chrome.storage.local.get(['activo', 'dolarData', 'tipoDolar'], (stored) => {
-    activo    = stored.activo    ?? false;
-    tipoDolar = stored.tipoDolar || 'oficial';
-    dolarData = stored.dolarData || null;
-
-    if (activo && getCotizacion()) {
-        inyectarBadges();
-        observarDOM();
+function refrescarBadges() {
+    if (!activo || !getCotizacion(dolarData, tipoDolar)) {
+        eliminarBadges();
+        return;
     }
+    inyectarBadges();
+    observarDOM();
+}
+
+leerPrefs().then((prefs) => {
+    aplicarPrefs(prefs);
+    cargarDatosLocales().then(refrescarBadges);
 });
 
 // =====================================================================
 // Sincronización con cambios de storage (sin reload de página)
 // =====================================================================
 chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local') return;
-
-    if (changes.activo !== undefined) {
-        activo = changes.activo.newValue;
-        if (!activo) {
+    if (area === 'sync') {
+        const prefs = {};
+        ['activo', 'tipoDolar', 'umbralPesos', 'decimales'].forEach(k => {
+            if (changes[k] !== undefined) prefs[k] = changes[k].newValue;
+        });
+        if (Object.keys(prefs).length) {
+            aplicarPrefs({ ...prefs });
             eliminarBadges();
-        } else if (getCotizacion()) {
-            inyectarBadges();
-            observarDOM();
+            refrescarBadges();
         }
+        return;
     }
 
-    if (changes.dolarData !== undefined) {
+    if (area === 'local' && changes.dolarData !== undefined) {
         dolarData = changes.dolarData.newValue;
-        if (activo && getCotizacion()) { inyectarBadges(); observarDOM(); }
-    }
-
-    if (changes.tipoDolar !== undefined) {
-        tipoDolar = changes.tipoDolar.newValue;
         eliminarBadges();
-        if (activo && getCotizacion()) inyectarBadges();
+        refrescarBadges();
     }
 });
 
 // =====================================================================
-// Badges permanentes en cards de precio
+// Badges en cards de precio
 // =====================================================================
 function inyectarBadges() {
-    const cotiz = getCotizacion();
+    const cotiz = getCotizacion(dolarData, tipoDolar);
     if (!cotiz) return;
 
     document.querySelectorAll(PRICE_SELECTORS).forEach(el => {
@@ -92,22 +93,12 @@ function inyectarBadges() {
         const textoMoneda = el.parentElement ? el.parentElement.innerText : el.innerText;
         if (/US\$|USD|U\$D|U\$S/i.test(textoMoneda)) return;
 
-        const pesos = parsearPesos(el.innerText);
+        const pesos = parsearPesos(el.innerText, umbralPesos);
         if (!pesos) return;
 
         const badge = document.createElement('span');
-        badge.className  = BADGE_CLASS;
-        badge.textContent = `≈ U$D ${formatUSD(pesos / cotiz)}`;
-        badge.style.cssText = `
-            display: block;
-            font-size: 11px;
-            color: #28a745;
-            font-weight: 600;
-            font-family: sans-serif;
-            margin-top: 2px;
-            letter-spacing: 0.2px;
-            line-height: 1.2;
-        `;
+        badge.className = BADGE_CLASS;            // estilos en style/style.css
+        badge.textContent = `≈ U$D ${formatearUSD(pesos / cotiz, decimales)}`;
         el.appendChild(badge);
     });
 }
@@ -124,7 +115,7 @@ let observer = null;
 function observarDOM() {
     if (observer) return;
     observer = new MutationObserver(() => {
-        if (activo && getCotizacion()) inyectarBadges();
+        if (activo && getCotizacion(dolarData, tipoDolar)) inyectarBadges();
     });
     observer.observe(document.body, { childList: true, subtree: true });
 }
